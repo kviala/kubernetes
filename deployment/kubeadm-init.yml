@@ -1,0 +1,20 @@
+---
+- hosts: controlplane
+  remote_user: kevin
+  become: yes
+  tasks:
+
+### Initialize the cluster with HA configuration
+
+    - name: Initialize Kubeadm cluster
+      command: kubeadm init --control-plane-endpoint 192.168.137.100 --pod-network-cidr=10.244.0.0/16 --upload-certs
+      register: kubeadmout
+    
+    - debug: var=kubeadmout.stdout_lines
+ 
+    - name: Wait until the file /etc/kubernetes/admin.conf is present before continuing
+      wait_for:
+        path: /etc/kubernetes/admin.conf
+      
+    - name: Install and configure flannel
+      shell: kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml

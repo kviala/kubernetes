@@ -1,0 +1,5 @@
+---
+- hosts: newnode
+  remote_user: root
+  roles:
+  - newnodes

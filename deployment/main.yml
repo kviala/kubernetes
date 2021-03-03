@@ -1,0 +1,114 @@
+---
+- hosts: all
+  remote_user: kevin
+  become: yes
+  tasks:
+
+### Step 1 : install all prerequisites
+
+## Configure machines parameters
+
+# Disable machines swap
+    - name: Disable swap
+      command: swapoff -a
+
+    - name: Edit fstab to remove swap
+      replace:
+        path: /etc/fstab
+        regexp: '/swap.img'
+        replace: '#/swap.img'
+
+# Allow iptables to see bridged traffic
+    - name: Pass bridged IPv4 traffic to iptables’ chains (1/3)
+      template:
+        src: /srv/modules-load-k8s.conf.j2
+        dest: /etc/modules-load.d/k8s.conf
+
+    - name: Pass bridged IPv4 traffic to iptables’ chains (2/3)
+      template:
+        src: /srv/sysctl-k8s.conf.j2
+        dest: /etc/sysctl.d/k8s.conf
+
+    - name: Pass bridged IPv4 traffic to iptables’ chains (3/3)
+      command: sysctl --system
+
+## Install container runtime (Docker)
+
+    - name: Install packages for repository https access
+      apt:
+        name:
+          - apt-transport-https 
+          - ca-certificates 
+          - curl 
+          - software-properties-common 
+          - gnupg2
+
+    - name: Install Docker apt key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        keyring: /etc/apt/trusted.gpg.d/docker.gpg
+        state: present
+
+    - name: Add the Docker apt repository
+      ansible.builtin.apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable
+        state: present
+
+    - name: Install docker-ce, docker-ce-cli & containerd
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+
+## Configure Docker runtime
+
+    - name: Create /etc/docker
+      ansible.builtin.file:
+        path: /etc/docker
+        state: directory
+
+    - name: Set up the Docker daemon
+      template:
+        src: /srv/docker-daemon.json.j2
+        dest: /etc/docker/daemon.json
+
+    - name: Create /etc/systemd/system/docker.service.d
+      ansible.builtin.file:
+        path: /etc/systemd/system/docker.service.d
+        state: directory
+
+    - name: Systemd daemon reload
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
+    - name: Docker daemon reload
+      ansible.builtin.systemd:
+        name: docker
+        state: reloaded
+        enabled: yes
+
+## Install Kubernetes components (Kubeadm, Kubelet, Kubectl)
+
+    - name: Install Kubernetes apt key
+      ansible.builtin.apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        keyring: /etc/apt/trusted.gpg.d/kubernetes.gpg
+        state: present
+
+    - name: Configure kubernetes repos
+      ansible.builtin.apt_repository:
+        repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+        state: present
+
+    - name: Apt-get update
+      apt:
+        name: "*"
+        state: latest
+
+    - name: Install Kubeadm, Kubelet, Kubectl
+      apt:
+        name:
+          - kubeadm
+          - kubelet
+          - kubectl
